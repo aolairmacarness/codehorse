@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { nextCookies } from "better-auth/next-js";
 import prisma from "@/lib/db";
 
 function requiredEnv(name: string): string {
@@ -46,4 +47,7 @@ export const auth = betterAuth({
       path: "/",
     },
   },
+  // Lets auth calls made from server actions (e.g. logout) set/clear cookies.
+  // Keep this last in the plugins array.
+  plugins: [nextCookies()],
 });

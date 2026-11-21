@@ -13,15 +13,17 @@ datasource db {
 }
 
 model User {
-  id            String    @id
+  id            String        @id
   name          String
   email         String
-  emailVerified Boolean   @default(false)
+  emailVerified Boolean       @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   sessions      Session[]
   accounts      Account[]
+  repositories  Repository[]
+  chatMessages  ChatMessage[]
 
   @@unique([email])
   @@map("user")
@@ -73,4 +75,50 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+// GitHub repositories synced for a user. Ported from the reference project's
+// Mongoose `Repository` schema.
+model Repository {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubId          BigInt
+  fullName          String
+  name              String
+  owner             String
+  description       String        @default("")
+  defaultBranch     String        @default("main")
+  private           Boolean       @default(false)
+  // idle | indexing | indexed | failed
+  indexStatus       String        @default("idle")
+  indexedAt         DateTime?
+  fileCount         Int           @default(0)
+  pineconeNamespace String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  chatMessages      ChatMessage[]
+
+  @@unique([userId, githubId])
+  @@index([userId, fullName])
+  @@map("repository")
+}
+
+// One row per chat turn. Replaces the reference's Mongoose `Chat` document,
+// which embedded a `messages` array per (userId, repoId).
+model ChatMessage {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  // "user" | "assistant"
+  role         String
+  content      String
+  // [{ path: string, chunk: number }]
+  citations    Json?
+  createdAt    DateTime   @default(now())
+
+  @@index([userId, repositoryId, createdAt])
+  @@map("chat_message")
 }

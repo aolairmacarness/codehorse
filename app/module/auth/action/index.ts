@@ -16,7 +16,7 @@ export async function requireAuth() {
     const user = await getCurrentUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/login");
     }
 
     return user;
@@ -35,7 +35,7 @@ export async function signOut() {
         headers: await headers(),
     });
 
-    redirect("/sign-in");
+    redirect("/login");
 }
 
 export async function signInWithGithub() {

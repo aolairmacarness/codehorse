@@ -1,8 +1,11 @@
 "use client";
 
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import type { InfiniteData } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import {
   getRepositoriesPage,
   syncGithubPage,
@@ -10,37 +13,59 @@ import {
 
 type ReposPage = Awaited<ReturnType<typeof getRepositoriesPage>>;
 
-export function useRepositories(initialData: InfiniteData<ReposPage, number>) {
-  return useInfiniteQuery({
-    queryKey: ["repositories"],
-    queryFn: ({ pageParam }) => getRepositoriesPage(pageParam),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, _pages, lastPageParam) =>
-      lastPage.hasMore ? lastPageParam + 1 : undefined,
-    initialData,
-  });
-}
-
-export function useGithubSync() {
-  const queryClient = useQueryClient();
-  const [syncing, setSyncing] = useState(false);
-
-  const githubSync = useInfiniteQuery({
-    queryKey: ["github-sync"],
-    queryFn: async ({ pageParam }) => {
-      const page = await syncGithubPage(pageParam);
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      return page;
-    },
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, _pages, lastPageParam) =>
-      lastPage.hasMore ? lastPageParam + 1 : undefined,
-    enabled: syncing,
-  });
-
-  function startSync() {
-    setSyncing(true);
+export function useRepositories(
+    initialData?: InfiniteData<ReposPage, number>
+  ) {
+    return useInfiniteQuery({
+      queryKey: ["repositories"],
+      queryFn: ({ pageParam }) => getRepositoriesPage(pageParam),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage, _, page) =>
+        lastPage.hasMore ? page + 1 : undefined,
+      initialData,
+    });
   }
 
-  return { syncing, githubSync, startSync };
-}
+  export function useGithubSync() {
+    const queryClient = useQueryClient();
+    const [syncing, setSyncing] = useState(false);
+  
+    const githubSync = useInfiniteQuery({
+      queryKey: ["github-sync"],
+      queryFn: ({ pageParam }) => syncGithubPage(pageParam),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage, _, page) =>
+        lastPage.hasMore ? page + 1 : undefined,
+      enabled: syncing,
+    });
+  
+    const startSync = () => {
+      queryClient.removeQueries({ queryKey: ["github-sync"] });
+      setSyncing(true);
+    };
+  
+    useEffect(() => {
+      if (
+        syncing &&
+        githubSync.isFetched &&
+        !githubSync.hasNextPage &&
+        !githubSync.isFetching
+      ) {
+        setSyncing(false);
+        queryClient.resetQueries({ queryKey: ["repositories"] });
+      }
+    }, [
+      syncing,
+      githubSync.isFetched,
+      githubSync.hasNextPage,
+      githubSync.isFetching,
+      queryClient,
+    ]);
+  
+    return {
+      syncing,
+      githubSync,
+      startSync,
+    };
+  }
+  

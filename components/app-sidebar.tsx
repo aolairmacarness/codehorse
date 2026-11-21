@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BookOpen, GitPullRequest, Settings } from "lucide-react"
+import { BookOpen, MessageSquare, Settings } from "lucide-react"
 import { GitHubIcon } from "@/app/module/auth/components/github-icon"
 import { useSession } from "@/lib/auth-client"
 
@@ -22,15 +22,13 @@ import {
 } from "@/components/ui/sidebar"
 
 const navigationItems = [
-  { href: "/dashboard", label: "Dashboard", icon: BookOpen },
-  { href: "/dashboard/repository", label: "Repository", icon: GitHubIcon },
-  { href: "/dashboard/subscription", label: "Review", icon: GitPullRequest },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/overview", label: "Overview", icon: BookOpen },
+  { href: "/repositories", label: "Repositories", icon: GitHubIcon },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/settings", label: "Settings", icon: Settings },
 ]
 
 function isRouteActive(pathname: string, href: string) {
-  // "/dashboard" only matches exactly so it doesn't stay active on every child route.
-  if (href === "/dashboard") return pathname === href
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
@@ -45,7 +43,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <Link href="/dashboard" className="px-2 py-1 text-lg font-semibold">
+        <Link href="/overview" className="px-2 py-1 text-lg font-semibold">
           Review
         </Link>
       </SidebarHeader>

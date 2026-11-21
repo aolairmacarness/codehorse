@@ -51,7 +51,7 @@ export default async function OverviewPage() {
             <CardDescription>Local only</CardDescription>
           </CardHeader>
           <CardContent>
-            <Badge variant="secondary">pnpm dev + inngest dev</Badge>
+            <Badge variant="secondary">npm run dev + inngest dev</Badge>
           </CardContent>
         </Card>
       </div>

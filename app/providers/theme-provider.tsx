@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { THEME_STORAGE_KEY } from "./theme-script";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -16,7 +17,7 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const STORAGE_KEY = "theme";
+const STORAGE_KEY = THEME_STORAGE_KEY;
 const THEME_CHANGE = "theme-change";
 
 function resolveDark(theme: Theme, enableSystem: boolean) {
@@ -54,8 +55,6 @@ function readTheme(defaultTheme: Theme): Theme {
   if (stored === "light" || stored === "dark" || stored === "system") return stored;
   return defaultTheme;
 }
-
-const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var d=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);}catch(e){}})();`;
 
 export function ThemeProvider({
   children,
@@ -104,7 +103,6 @@ export function ThemeProvider({
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
-      <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       {children}
     </ThemeContext.Provider>
   );

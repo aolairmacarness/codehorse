@@ -1,36 +1,37 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import connectDB, { isValidObjectId } from "@/lib/db";
-import Repository from "@/schemas/Repository";
-import { requireAuth } from "@/modules/auth/actions";
-import { fetchUserRepos, getGithubToken } from "@/modules/repositories/lib/github";
-import { inngest } from "@/modules/indexing/inngest/client";
+import prisma from "@/lib/db";
+import type { Repository } from "@/app/generated/prisma/client";
+import { requireAuth } from "@/app/module/auth/action";
+import { fetchUserRepos, getGithubToken } from "@/app/module/repositories/lib/github";
+import { inngest } from "@/app/module/indexing/inngest/client";
 
 const PAGE_SIZE = 20;
 
+export type IndexStatus = "idle" | "indexing" | "indexed" | "failed";
 
-function toRepoItem(repo: {
-    _id: unknown;
-    githubId: number;
-    fullName: string;
-    description?: string;
-    private?: boolean;
-    indexStatus?: string;
-}) {
+function toRepoItem(repo: Repository) {
     return {
-        id: String(repo._id),
-        githubId: repo.githubId,
+        id: repo.id,
+        githubId: Number(repo.githubId),
         fullName: repo.fullName,
-        description: repo.description ?? "",
-        private: repo.private ?? false,
-        indexStatus: repo.indexStatus ?? "idle",
+        description: repo.description,
+        private: repo.private,
+        indexStatus: repo.indexStatus as IndexStatus,
+    };
+}
+
+// BigInt isn't JSON-serializable, so expose githubId as a number.
+function toRepoDetail(repo: Repository) {
+    return {
+        ...repo,
+        githubId: Number(repo.githubId),
+        indexStatus: repo.indexStatus as IndexStatus,
     };
 }
 
 export async function syncGithubPage(page: number) {
     const user = await requireAuth();
-    await connectDB();
 
     const token = await getGithubToken();
     const githubRepos = await fetchUserRepos(token, page);
@@ -39,12 +40,9 @@ export async function syncGithubPage(page: number) {
         ...new Map(githubRepos.map((repo) => [repo.id, repo])).values(),
     ];
 
-    for (const repo of uniqueGithubRepos) {
-        await Repository.findOneAndUpdate(
-            { userId: user.id, githubId: repo.id },
-            {
-                userId: user.id,
-                githubId: repo.id,
+    await prisma.$transaction(
+        uniqueGithubRepos.map((repo) => {
+            const data = {
                 fullName: repo.full_name,
                 name: repo.name,
                 owner: repo.owner.login,
@@ -52,17 +50,25 @@ export async function syncGithubPage(page: number) {
                 defaultBranch: repo.default_branch,
                 private: repo.private,
                 pineconeNamespace: `repo_${repo.id}`,
-            },
-            { upsert: true, new: true }
-        );
-    }
+            };
 
-    const savedRepos = await Repository.find({
-        userId: user.id,
-        githubId: { $in: uniqueGithubRepos.map((repo) => repo.id) },
-    })
-        .sort({ fullName: 1 })
-        .lean();
+            return prisma.repository.upsert({
+                where: {
+                    userId_githubId: { userId: user.id, githubId: BigInt(repo.id) },
+                },
+                create: { userId: user.id, githubId: BigInt(repo.id), ...data },
+                update: data,
+            });
+        })
+    );
+
+    const savedRepos = await prisma.repository.findMany({
+        where: {
+            userId: user.id,
+            githubId: { in: uniqueGithubRepos.map((repo) => BigInt(repo.id)) },
+        },
+        orderBy: { fullName: "asc" },
+    });
 
     return {
         repos: savedRepos.map(toRepoItem),
@@ -72,15 +78,16 @@ export async function syncGithubPage(page: number) {
 
 export async function getRepositoriesPage(page: number) {
     const user = await requireAuth();
-    await connectDB();
 
-    const repos = await Repository.find({ userId: user.id })
-        .sort({ fullName: 1 })
-        .skip((page - 1) * PAGE_SIZE)
-        .limit(PAGE_SIZE)
-        .lean();
-
-    const total = await Repository.countDocuments({ userId: user.id });
+    const [repos, total] = await Promise.all([
+        prisma.repository.findMany({
+            where: { userId: user.id },
+            orderBy: { fullName: "asc" },
+            skip: (page - 1) * PAGE_SIZE,
+            take: PAGE_SIZE,
+        }),
+        prisma.repository.count({ where: { userId: user.id } }),
+    ]);
 
     return {
         repos: repos.map(toRepoItem),
@@ -90,46 +97,43 @@ export async function getRepositoriesPage(page: number) {
 
 export async function getRepositories() {
     const user = await requireAuth();
-    await connectDB();
 
-    return Repository.find({ userId: user.id })
-        .sort({ fullName: 1 })
-        .lean();
+    const repos = await prisma.repository.findMany({
+        where: { userId: user.id },
+        orderBy: { fullName: "asc" },
+    });
+
+    return repos.map(toRepoDetail);
 }
 
 export async function getRepository(repoId: string) {
-    if (!isValidObjectId(repoId)) {
-        return null;
-    }
-
     const user = await requireAuth();
-    await connectDB();
 
-    return Repository.findOne({ _id: repoId, userId: user.id }).lean();
+    const repo = await prisma.repository.findFirst({
+        where: { id: repoId, userId: user.id },
+    });
+
+    return repo ? toRepoDetail(repo) : null;
 }
 
-
-export async function startIndexing(repoId:string){
-    if (!isValidObjectId(repoId)) {
-        throw new Error("Repository not found");
-    }
-
+export async function startIndexing(repoId: string) {
     const user = await requireAuth();
-    await connectDB();
 
-    const repo = await Repository.findOne({ _id: repoId, userId: user.id }).lean();
-    if(!repo){
+    const repo = await prisma.repository.findFirst({
+        where: { id: repoId, userId: user.id },
+        select: { id: true },
+    });
+    if (!repo) {
         throw new Error("Repository not found");
     }
 
-    const githubToken = await getGithubToken();
-
+    // The GitHub token is resolved inside the job from userId, so it never
+    // ends up in Inngest's stored event payloads.
     await inngest.send({
         name: "repo/index",
         data: {
-            repoId:String(repo._id),
+            repoId: repo.id,
             userId: user.id,
-            githubToken,
         },
     });
 }
