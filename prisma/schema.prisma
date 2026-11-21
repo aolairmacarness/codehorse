@@ -97,7 +97,10 @@ model Repository {
   pineconeNamespace String?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
+  // GitHub webhook id once registered by us (null = no live updates yet)
+  webhookId         BigInt?
   chatMessages      ChatMessage[]
+  pullRequests      PullRequest[]
 
   @@unique([userId, githubId])
   @@index([userId, fullName])
@@ -121,4 +124,46 @@ model ChatMessage {
 
   @@index([userId, repositoryId, createdAt])
   @@map("chat_message")
+}
+
+// Pull requests for synced repositories. Filled by the initial sync and kept
+// fresh by the GitHub `pull_request` webhook.
+model PullRequest {
+  id           String     @id @default(cuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  githubId     BigInt
+  number       Int
+  title        String
+  htmlUrl      String
+  authorLogin  String
+  authorAvatar String?
+  // open | closed
+  state        String
+  draft        Boolean    @default(false)
+  merged       Boolean    @default(false)
+  openedAt     DateTime
+  updatedAtGh  DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  comments     Comment[]
+
+  @@unique([repositoryId, number])
+  @@index([repositoryId, state])
+  @@map("pull_request")
+}
+
+// One row per AI review comment posted to a pull request.
+model Comment {
+  id            String      @id @default(cuid())
+  pullRequestId String
+  pullRequest   PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  githubId      BigInt
+  htmlUrl       String
+  body          String
+  createdAt     DateTime    @default(now())
+
+  @@unique([pullRequestId, githubId])
+  @@index([pullRequestId, createdAt])
+  @@map("comment")
 }

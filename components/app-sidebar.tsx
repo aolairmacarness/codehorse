@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BookOpen, MessageSquare, Settings } from "lucide-react"
+import { BookOpen, GitPullRequest, MessageSquare, Settings } from "lucide-react"
 import { GitHubIcon } from "@/app/module/auth/components/github-icon"
 import { useSession } from "@/lib/auth-client"
 
@@ -24,6 +24,7 @@ import {
 const navigationItems = [
   { href: "/overview", label: "Overview", icon: BookOpen },
   { href: "/repositories", label: "Repositories", icon: GitHubIcon },
+  { href: "/pull-requests", label: "Pull requests", icon: GitPullRequest },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
